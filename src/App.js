@@ -76,35 +76,50 @@ export default function App() {
     setWatched((watched) => watched.filter((movie) => movie.imdbID !== id));
   }
 
-  useEffect(
-    function () {
-      async function fetchMovies() {
-        try {
-          setIsLoading(true);
-          setError("");
-          const res = await fetch(
-            `http://www.omdbapi.com/?apikey=${KEY}&s=${query}`
-          );
-          if (!res.ok) throw new Error("something went wrong fetching movies");
-          const data = await res.json();
-          if (data.Response === "False") throw new Error("movie not found");
-          setMovies(data.Search);
-          console.log(data.Search);
-        } catch (err) {
-          setError(err.message);
-        } finally {
-          setIsLoading(false);
+  useEffect(() => {
+    const controller = new AbortController(); // Create a new instance for this effect
+    const signal = controller.signal;
+
+    async function fetchMovies() {
+      try {
+        setIsLoading(true);
+        setError(""); // Reset error state
+
+        const res = await fetch(
+          `http://www.omdbapi.com/?apikey=${KEY}&s=${query}`,
+          { signal } // Pass the signal to the fetch request
+        );
+
+        if (!res.ok) throw new Error("Something went wrong fetching movies");
+        const data = await res.json();
+
+        if (data.Response === "False") throw new Error("Movie not found");
+        setMovies(data.Search); // Update movies state
+      } catch (err) {
+        if (err.name === "AbortError") {
+          console.log("Fetch aborted");
+        } else {
+          setError(err.message); // Set error for non-abort errors
         }
+      } finally {
+        setIsLoading(false); // Reset loading state
       }
-      if (query.length < 3) {
-        setMovies([]);
-        setError("");
-        return;
-      }
+    }
+
+    // Only fetch movies if query is valid
+    if (query.length >= 3) {
       fetchMovies();
-    },
-    [query]
-  );
+    } else {
+      setMovies([]); // Clear movies if query is too short
+      setError(""); // Clear error when query is reset
+    }
+
+    // Cleanup function to abort ongoing fetch requests
+    return () => {
+      console.log("Cleanup: Aborting ongoing fetch request.");
+      controller.abort();
+    };
+  }, [query]); // Dependency array for query changes
 
   return (
     <>
@@ -282,6 +297,17 @@ function MovieDetails({ selectedId, onCloseMovie, onAddWatched, watched }) {
     [selectedId]
   );
 
+  useEffect(
+    function () {
+      if (!title) return;
+      document.title = `Movie | ${title}`;
+
+      return function () {
+        document.title = "usePopcorn";
+      };
+    },
+    [title]
+  );
   return (
     <div className="details">
       {isLoading ? (
